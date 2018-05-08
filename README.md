@@ -18,11 +18,14 @@ Cointracking.info Setup
 
 Python Setup
 
-This program requires Python 3 and has some dependencies.  If you are running Ubuntu, the following commands can be used to install the dependencies and run the program.
+This program requires Python 3 and has some dependencies.  If you are running Ubuntu, the following commands can be used to install the dependencies.  If you are running Windows 10, you can install Ubuntu here: https://www.microsoft.com/en-us/store/p/ubuntu/9nblggh4msv6
 ```
 sudo apt-get update
 sudo apt-get install python3-pip
 python3 -m pip install numpy pandas requests-cache xlsxwriter --user
+```
+
+Place the Cointracking.info CSV file in the same directory as the python program file and run the following command:
+```
 python3 calc.py
 ```
-If you are running Windows 10, you can install Ubuntu here: https://www.microsoft.com/en-us/store/p/ubuntu/9nblggh4msv6

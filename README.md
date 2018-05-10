@@ -22,7 +22,7 @@ This program requires Python 3 and has some dependencies.  If you are running Ub
 ```
 sudo apt-get update
 sudo apt-get install python3-pip
-python3 -m pip install numpy pandas requests-cache xlsxwriter --user
+python3 -m pip install pandas requests-cache xlsxwriter --user
 ```
 
 Place the Cointracking.info CSV file in the same directory as the python program file and run the following command:

@@ -29,7 +29,7 @@ sudo apt-get install python3-pip
 python3 -m pip install pandas requests-cache xlsxwriter --user
 ```
 
-Place the CoinTracking.info CSV file in the same directory as the python program file and run the following command:
+Download the calc.py file from this repository.  Place the CoinTracking.info CSV file in the same directory as the Python file and run the following command:
 ```
 python3 calc.py
 ```

@@ -4,7 +4,7 @@
 
 This program takes CoinTracking.info trade data in CSV format and does the following:
 
-- Matches buy and sell amounts from trades for each cryptocurrency using first-in-first-out (FIFO) methodology.
+- Matches buy and sell amounts from trades using first-in-first-out (FIFO) methodology.
 - Creates realized and unrealized totals for each cryptocurrency, calculated in fiat and other cryptocurrencies (BTC and ETH by default).  The program uses CryptoCompare.com and CoinMarketCap.com APIs to retrieve historical and current prices, respectively.
 - Creates realized and unrealized per unit totals for each cryptocurrency, calculated in fiat and other cryptocurrencies (BTC and ETH by default).
 - Outputs Excel workbook with above data.

@@ -169,7 +169,7 @@ def create_buy_and_sell_match_df(buy_df, sell_df, value_currencies, session):
     subtract_match(buy_df, buy_row_index, match_quantity, buy_match_value, primary_value_currency, 'buy')
     subtract_match(sell_df, sell_row_index, match_quantity, sell_match_value, primary_value_currency, 'sell')
 
-  buy_and_sell_match_df = pd.concat([buy_and_sell_match_df, buy_df.rename(columns={'buy':'quantity', 'buy_currency':'currency', 'trade_value_usd':'buy_value_usd', 'exchange':'buy_exchange', 'comment':'buy_comment', 'trade_date':'buy_date'})], ignore_index=True)
+  buy_and_sell_match_df = pd.concat([buy_and_sell_match_df, buy_df.rename(columns={'buy':'quantity', 'buy_currency':'currency', 'trade_value_' + primary_value_currency:'buy_value_'+ primary_value_currency, 'exchange':'buy_exchange', 'comment':'buy_comment', 'trade_date':'buy_date'})], ignore_index=True)
   
   for value_currency in value_currencies[1:]:
     value_currency = value_currency.lower()
@@ -382,7 +382,7 @@ def main():
 
   print('Successfully generated ' + excel_output_filename)
   
-fiat_currencies = fiat_currencies = ['AED', 'ARS', 'AUD', 'BRL', 'CAD', 'CHF', 'CLP', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'IDR', 'ILS', 'INR', 'JPY', 'KRW', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PKR', 'PLN', 'RON', 'RUB', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'UAH', 'USD', 'ZAR']
+fiat_currencies = ['AED', 'ARS', 'AUD', 'BRL', 'CAD', 'CHF', 'CLP', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'IDR', 'ILS', 'INR', 'JPY', 'KRW', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PKR', 'PLN', 'RON', 'RUB', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'UAH', 'USD', 'ZAR']
   
 internal_decimal_places = 8
 

@@ -5,8 +5,8 @@
 The program takes CoinTracking.info trade data in CSV format and does the following:
 
 - Matches buys and sells of each cryptocurrency using first-in-first-out (FIFO) methodology.
-- Creates realized and unrealized totals for each cryptocurrency, calculated in fiat and other cryptocurrencies (BTC and ETH by default).
-- Creates realized and unrealized per unit totals for each cryptocurrency, calculated in fiat and other cryptocurrencies (BTC and ETH by default).
+- Calculates realized and unrealized totals for each cryptocurrency, valued in fiat and other cryptocurrencies (BTC and ETH by default).
+- Calculates realized and unrealized average prices for each cryptocurrency, valued in fiat and other cryptocurrencies (BTC and ETH by default).
 - Outputs Excel workbook with above data.
 
 ## Instructions
@@ -44,25 +44,28 @@ sudo apt-get update
 sudo apt-get install python3-pip
 python3 -m pip install pandas requests-cache xlsxwriter --user
 ```
-Download the calc.py file from this repository.  Place the CoinTracking.info CSV file in the same directory as the Python file and run the following command:
+Download the calc.py file from this repository and place it in a writeable directory.  Place the CoinTracking.info CSV file in the same directory as the Python file and run the following command:
 ```
 python3 calc.py
 ```
+When prompted, input the valuation cryptocurrencies you want to use, separated by commas.  If nothing is entered, the program will use BTC and ETH as valuation cryptocurrencies by default.
+
 ## Implementation Details
 
-1.  Supported Fiat Currencies
-    - AED, ARS, AUD, BRL, CAD, CHF, CLP, CNY, CZK, DKK, EUR, GBP, HKD, HUF, IDR, ILS, INR, JPY, KRW, MXN, MYR, NOK, NZD, PHP, PKR, PLN, RON, RUB, SEK, SGD, THB, TRY, TWD, UAH, USD, ZAR
+1.  Fiat Currencies
+    - The program uses the "Buy value in (fiat currency)" and "Sell value in (fiat currency)" columns from CoinTracking.info as the basis for all trade valuations.
+    - The program supports the following fiat currencies:
+      - AED, ARS, AUD, BRL, CAD, CHF, CLP, CNY, CZK, DKK, EUR, GBP, HKD, HUF, IDR, ILS, INR, JPY, KRW, MXN, MYR, NOK, NZD, PHP, PKR, PLN, RON, RUB, SEK, SGD, THB, TRY, TWD, UAH, USD, ZAR
 
 2.  Currency Conversion
-    - The program uses the "Buy value in (fiat currency)" and "Sell value in (fiat currency)" columns from CoinTracking.info as the basis for all trade valuations.
-    - To convert fiat to other value currencies, such as BTC and ETH, the program uses the CryptoCompare.com API.  The API makes available hourly historical prices.  The API returns prices for the two hours closest to each trade date.  The program averages these two prices when converting fiat to other value currencies.
+    - To convert valuations in fiat to valuations in cryptocurrencies, such as BTC and ETH, the program uses the CryptoCompare.com API.  The API makes available hourly historical prices.  The API returns prices for the two hours closest to each trade date.  The program averages these two prices when converting fiat to other valuation currencies.  The program uses an HTTP requests cache when calling this API.  So using a valuation cryptocurrency will take a long time on the first run, but will be significantly faster on subsequent runs.
     - The program uses the CoinMarketCap.com API to retrieve the most recent prices of current holdings.
 
 3.  Trade Valuations
     - For each trade, CoinTracking.info has two fiat valuations: "Buy value in (fiat currency)" and "Sell value in (fiat currency)".  For example, the buy side of a trade may be valued at $100 USD, but the sell side may be valued at $102 USD.  The program follows the below rules when calculating trade valuations:
       - The value of both sides of a trade is always equal.  The program selects either the buy value or the sell value to represent the value of both sides of the trade.  Using the previous example, the value of both sides of the trade would be either $100 or $102.
       - If only one side of the trade exists, then the value of that side will be selected.  For example, mining income only has a buy side.
-      - If the value currency was used on either the buy or sell side, then the value of that side will be selected to represent both sides.  For example, if the value currency is USD, and you bought 1 BTC with $10000 USD, the program will assign a value of $10000 USD to both the buy and sell sides.  As another example if the value currency is ETH, and you bought 1 BTC with 10 ETH, the program will assign a value of 10 ETH to both the buy and sell sides.
+      - If the valuation currency was used on either the buy or sell side, then the value of that side will be selected to represent both sides.  For example, if the valuation currency is USD, and you bought 1 BTC with $10000 USD, the program will assign a value of $10000 USD to both the buy and sell sides.  As another example if the valuation currency is ETH, and you bought 1 BTC with 10 ETH, the program will assign a value of 10 ETH to both the buy and sell sides.
       - Unless a previous rule applies otherwise, the program will select the sell value by default.
 
 4.  Income Treatment

@@ -1,5 +1,6 @@
 import atexit
 import csv
+from datetime import timezone
 import numpy as np
 import os
 import pandas as pd
@@ -22,6 +23,45 @@ def retry_session(url, error_codes):
   adapter = HTTPAdapter(max_retries=retry)
   session.mount(url, adapter)
   return session
+
+def get_valuation_cryptocurrencies(cryptocompare_session):
+  cryptocompare_currencies = get_cryptocompare_currencies(cryptocompare_session)
+  user_input_valid = False
+  
+  while not user_input_valid:    
+    user_input = input('Input the valuation cryptocurrencies you want to use, separated by commas (or leave blank to use the default of BTC, ETH), and press enter: ')
+    
+    if user_input.strip() == '':
+      valuation_cryptocurrencies = ['BTC', 'ETH']
+      user_input_valid = True
+    else:
+      valuation_cryptocurrencies = []
+      user_input_currencies = [currency.upper().strip() for currency in user_input.split(',')]
+      for currency in user_input_currencies:
+        if not currency in valuation_cryptocurrencies:
+          valuation_cryptocurrencies.append(currency)
+      unsupported_currencies = list(set(valuation_cryptocurrencies).difference(cryptocompare_currencies))
+
+      if unsupported_currencies:
+        print('\n' + 'The following currencies are not supported by the CryptoCompare API: ' + ','.join(unsupported_currencies) + '.  Please try again with a different list of currencies.'+ '\n')
+      else:
+        user_input_valid = True
+      
+  return valuation_cryptocurrencies
+
+def get_cryptocompare_currencies(cryptocompare_session):
+  error_message = '\n' + 'The program encountered an error while trying to retrieve historical prices from the CryptoCompare API.  Please try running the program again later.'
+  try:
+    response = get_request(cryptocompare_session, cryptocompare_api_base_url + 'all/coinlist').json()
+    
+    if response['Response'] == 'Success':
+      cryptocompare_currencies = [currency.upper().strip() for currency in response['Data']]
+    else:
+      print_error_message_and_exit(error_message)
+  except:
+    print_error_message_and_exit(error_message)
+
+  return cryptocompare_currencies
 
 def read_input_file(input_filename):
   try:
@@ -48,23 +88,23 @@ def format_columns(columns):
     
   return new_columns
 
-def get_primary_value_currency(columns):
-  primary_value_currency = None
+def get_primary_valuation_currency(columns):
+  primary_valuation_currency = None
   
   for column in columns:
     if column.startswith('buy_value_'):
       currency = column.split('_')[-1].upper()
       if get_currency_is_fiat(currency):
-        primary_value_currency = currency
+        primary_valuation_currency = currency
 
-  if not primary_value_currency:
+  if not primary_valuation_currency:
     print_error_message_and_exit('The input file does not have a buy value column in a supported fiat currency.  Please provide an input file with a buy value column in one of the following fiat currencies and run the program again: ' + ', '.join(fiat_currencies) + '.')
-  return primary_value_currency
+  return primary_valuation_currency
 
 def check_for_required_columns(columns):
-  primary_value_currency = get_primary_value_currency(columns).lower()
+  primary_valuation_currency = get_primary_valuation_currency(columns).lower()
 
-  required_columns = ['type', 'buy', 'buy_currency', 'buy_value_' + primary_value_currency, 'sell', 'sell_currency', 'sell_value_' + primary_value_currency, 'exchange', 'comment', 'trade_date']
+  required_columns = ['type', 'buy', 'buy_currency', 'buy_value_' + primary_valuation_currency, 'sell', 'sell_currency', 'sell_value_' + primary_valuation_currency, 'exchange', 'comment', 'trade_date']
 
   missing_columns = list(set(required_columns).difference(columns))
   
@@ -72,22 +112,22 @@ def check_for_required_columns(columns):
     print_error_message_and_exit('The input file is missing the following required column(s): ' + ', '.join(missing_columns) + '.  Please correct the input file and run the program again.')  
 
 def format_values(input_df):
-  primary_value_currency = get_primary_value_currency(input_df.columns).lower()
+  primary_valuation_currency = get_primary_valuation_currency(input_df.columns).lower()
   
   input_df['type'] = input_df['type'].astype(str)
   input_df['buy'] = input_df['buy'].astype(str).replace('-', '0').astype(float)
   input_df['buy_currency'] = input_df['buy_currency'].astype(str)
-  input_df['buy_value_' + primary_value_currency] = input_df['buy_value_' + primary_value_currency].astype(float)
+  input_df['buy_value_' + primary_valuation_currency] = input_df['buy_value_' + primary_valuation_currency].astype(float)
   input_df['sell'] = input_df['sell'].astype(str).replace('-', '0').astype(float)
   input_df['sell_currency'] = input_df['sell_currency']
-  input_df['sell_value_' + primary_value_currency] = input_df['sell_value_' + primary_value_currency].astype(float)
+  input_df['sell_value_' + primary_valuation_currency] = input_df['sell_value_' + primary_valuation_currency].astype(float)
   input_df['exchange'] = input_df['exchange'].astype(str)
   input_df['comment'] = input_df['comment'].astype(str)
   input_df['trade_date'] = pd.to_datetime(input_df['trade_date'], format='%d.%m.%Y %H:%M')
   input_df = input_df.round(internal_decimal_places)
   input_df.fillna('', inplace=True)
   
-  input_df['trade_value_' + primary_value_currency] = input_df.apply(lambda row : set_primary_trade_value(row, primary_value_currency), axis=1)
+  input_df['trade_value_' + primary_valuation_currency] = input_df.apply(lambda row : set_primary_trade_value(row, primary_valuation_currency), axis=1)
   
   input_df['buy_currency_is_fiat'] = input_df['buy_currency'].apply(lambda x : get_currency_is_fiat(x))
   
@@ -95,24 +135,24 @@ def format_values(input_df):
   
   return input_df
   
-def set_primary_trade_value(row, primary_value_currency):
-  buy_value = row['buy_value_' + primary_value_currency]
-  sell_value = row['sell_value_' + primary_value_currency]
+def set_primary_trade_value(row, primary_valuation_currency):
+  buy_value = row['buy_value_' + primary_valuation_currency]
+  sell_value = row['sell_value_' + primary_valuation_currency]
 
   result = sell_value
   if not sell_value or sell_value == 0:
     result = buy_value
   else:
-    result = set_trade_value(row['buy'], row['buy_currency'], row['sell_value_' + primary_value_currency], primary_value_currency)
-    result = set_trade_value(row['sell'], row['sell_currency'], row['sell_value_' + primary_value_currency], primary_value_currency)
+    result = set_trade_value(row['buy'], row['buy_currency'], row['sell_value_' + primary_valuation_currency], primary_valuation_currency)
+    result = set_trade_value(row['sell'], row['sell_currency'], row['sell_value_' + primary_valuation_currency], primary_valuation_currency)
     
   return result
 
-def set_trade_value(quantity, currency, trade_value, trade_value_currency):
+def set_trade_value(quantity, currency, trade_value, trade_valuation_currency):
   currency = currency.lower()
-  trade_value_currency = trade_value_currency.lower()
+  trade_valuation_currency = trade_valuation_currency.lower()
   
-  if currency == trade_value_currency:
+  if currency == trade_valuation_currency:
     result = quantity
   else:
     result = trade_value
@@ -122,8 +162,8 @@ def get_currency_is_fiat(currency):
   return currency.upper() in fiat_currencies
   
 def create_buy_or_sell_df(input_df, side):  
-  primary_value_currency = get_primary_value_currency(input_df.columns).lower()
-  df = input_df.loc[(input_df[side] != 0) & (input_df[side + '_currency_is_fiat'] == False), [side, side + '_currency', 'trade_value_' + primary_value_currency, 'exchange', 'comment', 'trade_date']]
+  primary_valuation_currency = get_primary_valuation_currency(input_df.columns).lower()
+  df = input_df.loc[(input_df[side] != 0) & (input_df[side + '_currency_is_fiat'] == False), [side, side + '_currency', 'trade_value_' + primary_valuation_currency, 'exchange', 'comment', 'trade_date']]
 
   return df
 
@@ -132,17 +172,17 @@ def check_for_valid_buy_and_sell_quantities(buy_df, sell_df):
     if sell_df.loc[sell_df['sell_currency'] == currency, 'sell'].sum().round(internal_decimal_places) > buy_df.loc[buy_df['buy_currency'] == currency, 'buy'].sum().round(internal_decimal_places):
       print_error_message_and_exit('The units sold of ' + currency + ' exceed the units acquired.  Please correct the input file and try again.')
 
-def get_value_columns(value_currencies):
+def get_value_columns(valuation_currencies):
   value_column_prefixes = ['buy_value_', 'sell_value_', 'gain_loss_']
 
-  value_columns = [prefix + currency.lower() for currency in value_currencies for prefix in value_column_prefixes]
+  value_columns = [prefix + currency.lower() for currency in valuation_currencies for prefix in value_column_prefixes]
   
   return value_columns
 
-def create_buy_and_sell_match_df(buy_df, sell_df, value_currencies, session):
-  primary_value_currency = value_currencies[0].lower()
+def create_buy_and_sell_match_df(buy_df, sell_df, valuation_currencies, cryptocompare_session):
+  primary_valuation_currency = valuation_currencies[0].lower()
 
-  buy_and_sell_match_df = pd.DataFrame(columns=['currency', 'quantity', 'buy_date', 'sell_date', 'buy_value_' + primary_value_currency, 'sell_value_' + primary_value_currency, 'buy_exchange', 'sell_exchange', 'buy_comment', 'sell_comment'])
+  buy_and_sell_match_df = pd.DataFrame(columns=['currency', 'quantity', 'buy_date', 'sell_date', 'buy_value_' + primary_valuation_currency, 'sell_value_' + primary_valuation_currency, 'buy_exchange', 'sell_exchange', 'buy_comment', 'sell_comment'])
 
   while len(sell_df.index) > 0:
     sell_row_index = sell_df['trade_date'].idxmin()
@@ -160,31 +200,31 @@ def create_buy_and_sell_match_df(buy_df, sell_df, value_currencies, session):
     sell_quantity = sell_row['sell']
     match_quantity = min(buy_quantity, sell_quantity)
     
-    buy_match_value = calculate_trade_match_value(match_quantity, buy_quantity, buy_row['trade_value_' + primary_value_currency])
-    sell_match_value = calculate_trade_match_value(match_quantity, sell_quantity, sell_row['trade_value_' + primary_value_currency])
+    buy_match_value = calculate_trade_match_value(match_quantity, buy_quantity, buy_row['trade_value_' + primary_valuation_currency])
+    sell_match_value = calculate_trade_match_value(match_quantity, sell_quantity, sell_row['trade_value_' + primary_valuation_currency])
 
     if sell_row['comment'].lower() != 'gift':
       buy_and_sell_match_df.loc[len(buy_and_sell_match_df.index)] = [sell_currency, match_quantity, buy_date, sell_date, buy_match_value, sell_match_value, buy_row['exchange'], sell_row['exchange'], buy_row['comment'], sell_row['comment']]
   
-    subtract_match(buy_df, buy_row_index, match_quantity, buy_match_value, primary_value_currency, 'buy')
-    subtract_match(sell_df, sell_row_index, match_quantity, sell_match_value, primary_value_currency, 'sell')
+    subtract_match(buy_df, buy_row_index, match_quantity, buy_match_value, primary_valuation_currency, 'buy')
+    subtract_match(sell_df, sell_row_index, match_quantity, sell_match_value, primary_valuation_currency, 'sell')
 
-  buy_and_sell_match_df = pd.concat([buy_and_sell_match_df, buy_df.rename(columns={'buy':'quantity', 'buy_currency':'currency', 'trade_value_' + primary_value_currency:'buy_value_'+ primary_value_currency, 'exchange':'buy_exchange', 'comment':'buy_comment', 'trade_date':'buy_date'})], ignore_index=True)
+  buy_and_sell_match_df = pd.concat([buy_and_sell_match_df, buy_df.rename(columns={'buy':'quantity', 'buy_currency':'currency', 'trade_value_' + primary_valuation_currency:'buy_value_'+ primary_valuation_currency, 'exchange':'buy_exchange', 'comment':'buy_comment', 'trade_date':'buy_date'})], ignore_index=True)
   
-  for value_currency in value_currencies[1:]:
-    value_currency = value_currency.lower()
+  for valuation_currency in valuation_currencies[1:]:
+    valuation_currency = valuation_currency.lower()
     for side in ['buy', 'sell']:
-      primary_value_column = side + '_value_' + primary_value_currency
-      value_column = side + '_value_' + value_currency
+      primary_value_column = side + '_value_' + primary_valuation_currency
+      value_column = side + '_value_' + valuation_currency
       trade_date_column = side + '_date'
 
-      buy_and_sell_match_df[value_column] = buy_and_sell_match_df.loc[buy_and_sell_match_df[trade_date_column].notnull()].apply(lambda row : convert_historical_trade_value(row[primary_value_column], primary_value_currency, value_currency, row[trade_date_column], session), axis=1)
+      buy_and_sell_match_df[value_column] = buy_and_sell_match_df.loc[buy_and_sell_match_df[trade_date_column].notnull()].apply(lambda row : convert_historical_trade_value(row[primary_value_column], primary_valuation_currency, valuation_currency, row[trade_date_column], cryptocompare_session), axis=1)
 
-      buy_and_sell_match_df[value_column] = buy_and_sell_match_df.loc[buy_and_sell_match_df[trade_date_column].notnull()].apply(lambda row : set_trade_value(row['quantity'], row['currency'], row[value_column], value_currency), axis=1)
+      buy_and_sell_match_df[value_column] = buy_and_sell_match_df.loc[buy_and_sell_match_df[trade_date_column].notnull()].apply(lambda row : set_trade_value(row['quantity'], row['currency'], row[value_column], valuation_currency), axis=1)
   
-  buy_and_sell_match_df = add_gain_loss_to_df(buy_and_sell_match_df, value_currencies)
+  buy_and_sell_match_df = add_gain_loss_to_df(buy_and_sell_match_df, valuation_currencies)
   
-  buy_and_sell_match_df = buy_and_sell_match_df[['currency', 'quantity', 'buy_date', 'sell_date'] + get_value_columns(value_currencies) + ['buy_exchange', 'sell_exchange', 'buy_comment', 'sell_comment']]
+  buy_and_sell_match_df = buy_and_sell_match_df[['currency', 'quantity', 'buy_date', 'sell_date'] + get_value_columns(valuation_currencies) + ['buy_exchange', 'sell_exchange', 'buy_comment', 'sell_comment']]
 
   buy_and_sell_match_df.sort_values(by=['sell_date', 'buy_date'], ascending=False, inplace=True)
 
@@ -193,8 +233,8 @@ def create_buy_and_sell_match_df(buy_df, sell_df, value_currencies, session):
 def calculate_trade_match_value(match_quantity, trade_quantity, trade_value):
   return round((match_quantity / trade_quantity) * trade_value, internal_decimal_places)
 
-def subtract_match(df, index, match_quantity, match_value, primary_value_currency, side):
-  value_column = 'trade_value_' + primary_value_currency
+def subtract_match(df, index, match_quantity, match_value, primary_valuation_currency, side):
+  value_column = 'trade_value_' + primary_valuation_currency
   df.loc[index, side] = round(df.loc[index, side] - match_quantity, internal_decimal_places)
   df.loc[index, value_column] = round(df.loc[index, value_column] - match_value, internal_decimal_places)
 
@@ -203,17 +243,20 @@ def subtract_match(df, index, match_quantity, match_value, primary_value_currenc
   
   return df
 
-def get_cryptocompare_average_hourly_price(from_currency, to_currency, timestamp_value, session):
-  unix_time = str(int(timestamp_value.timestamp()))
+def convert_historical_trade_value(from_value, from_currency, to_currency, trade_date, cryptocompare):
+  return from_value * get_cryptocompare_average_hourly_price(from_currency, to_currency, trade_date, cryptocompare)
+  
+def get_cryptocompare_average_hourly_price(from_currency, to_currency, date, cryptocompare_session):
+  unix_time = str(int(date.replace(tzinfo=timezone.utc).timestamp()))
   from_currency = from_currency.upper()
   to_currency = to_currency.upper()
   result = None
   
   try:
-    response = get_request(session, cryptocompare_api_base_url + 'histohour?fsym=' + from_currency + '&tsym=' + to_currency + '&limit=1&toTs=' + unix_time)
+    response = get_request(cryptocompare_session, cryptocompare_api_base_url + 'histohour?fsym=' + from_currency + '&tsym=' + to_currency + '&limit=1&toTs=' + unix_time).json()
 
-    if response.json()['Response'] == 'Success':
-      result = mean([price['close'] for price in response.json()['Data']])
+    if response['Response'] == 'Success':
+      result = mean([price['close'] for price in response['Data']])
     else:
       print_error_message_and_exit('The program encountered an error while trying to convert ' + from_currency + ' to ' + to_currency + '.  It is likely that CryptoCompare does not have data for one of these currencies.  Please select a different currency conversion pair and try running the program again.')
   except:
@@ -223,8 +266,8 @@ def get_cryptocompare_average_hourly_price(from_currency, to_currency, timestamp
 def get_request(session, url):
   return session.get(url, timeout=5)
   
-def add_gain_loss_to_df(df, value_currencies):
-  for currency in value_currencies:
+def add_gain_loss_to_df(df, valuation_currencies):
+  for currency in valuation_currencies:
     currency = currency.lower()
     df['gain_loss_' + currency] = df['sell_value_' + currency] - df['buy_value_' + currency]
     
@@ -250,7 +293,7 @@ def create_totals_df(df, pivot_index, pivot_values, margins, margins_name):
   
   return totals_df
 
-def create_totals_per_unit_df(totals_df, columns, margins_name):
+def create_average_prices_df(totals_df, columns, margins_name):
   totals_df = totals_df.copy()
   
   for column in columns:
@@ -261,50 +304,50 @@ def create_totals_per_unit_df(totals_df, columns, margins_name):
   
   return totals_df
 
-def create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, value_currencies, margins_name, session):
+def create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, valuation_currencies, margins_name, coinmarketcap_session):
   unrealized_totals_df = create_totals_df(buy_and_sell_match_df.loc[buy_and_sell_match_df['sell_date'].isnull()], ['currency'], pivot_values, False, margins_name)
 
-  coinmarketcap_id_dict = get_coinmarketcap_ids(session)
+  coinmarketcap_id_dict = get_coinmarketcap_ids(coinmarketcap_session)
   
-  for currency in value_currencies:
+  for currency in valuation_currencies:
     currency = currency.lower()
-    unrealized_totals_df['sell_value_' + currency] = unrealized_totals_df.apply(lambda row : row['quantity'] * get_coinmarketcap_current_price(row['currency'], currency, coinmarketcap_id_dict, session), axis=1)
+    unrealized_totals_df['sell_value_' + currency] = unrealized_totals_df.apply(lambda row : row['quantity'] * get_coinmarketcap_current_price(row['currency'], currency, coinmarketcap_id_dict, coinmarketcap_session), axis=1)
   
-  unrealized_totals_df = add_gain_loss_to_df(unrealized_totals_df, value_currencies)
+  unrealized_totals_df = add_gain_loss_to_df(unrealized_totals_df, valuation_currencies)
 
   unrealized_totals_df = create_totals_df(unrealized_totals_df, ['currency'], pivot_values, True, margins_name)
   
   return unrealized_totals_df
 
-def get_coinmarketcap_ids(session):
+def get_coinmarketcap_ids(coinmarketcap_session):
   try:
-    response = get_request(session, coinmarketcap_api_base_url + 'ticker/?limit=0')
+    response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/?limit=0').json()
   except:
     print_error_message_and_exit('The program encountered an error while trying to retrieve coin IDs from the CoinMarketCap API.  Please try running the program again later.')
 
   coinmarketcap_id_dict = {}
     
-  for coin in response.json():
+  for coin in response:
     coinmarketcap_id_dict[coin['symbol'].lower()] = coin['id'].lower()
     
   coinmarketcap_id_dict['cpc'] = 'cpchain'
 
   return coinmarketcap_id_dict
 
-def get_coinmarketcap_current_price(from_currency, to_currency, coinmarketcap_id_dict, session):
+def get_coinmarketcap_current_price(from_currency, to_currency, coinmarketcap_id_dict, coinmarketcap_session):
   coinmarketcap_id = coinmarketcap_id_dict.get(from_currency.lower())
 
   if coinmarketcap_id:
     to_currency = to_currency.lower()
     try:
       with requests_cache.disabled():
-        response = get_request(session, coinmarketcap_api_base_url + 'ticker/' + coinmarketcap_id +  '/?convert=' + to_currency)
+        response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/' + coinmarketcap_id +  '/?convert=' + to_currency).json()
     except:
       print_error_message_and_exit('The program encountered an error while trying to retrieve current prices from the CoinMarketCap.com API.  Please try running the program again later.')
 
-    current_price = float(response.json()[0]['price_' + to_currency])
+    current_price = float(response[0]['price_' + to_currency])
   else:
-    print('CoinMarketCap does not have the current price for ' + from_currency + '.  The currency will have a current value of zero in the output file.')
+    print('\n' + 'CoinMarketCap does not have the current price for ' + from_currency + '.  The currency will have a current value of zero in the output file.')
     current_price = 0
       
   return current_price
@@ -317,9 +360,6 @@ def format_excel_sheet(df, sheet):
   sheet.autofilter(0, 0, len(df.index) - 1, len(df.columns) - 1)
   sheet.freeze_panes(1, 0)
 
-def convert_historical_trade_value(from_value, from_currency, to_currency, trade_date, session):
-  return from_value * get_cryptocompare_average_hourly_price(from_currency, to_currency, trade_date, session)
-  
 def write_excel_sheet(df, writer, sheet_name):
   df.to_excel(writer, sheet_name = sheet_name, index=False)
   format_excel_sheet(df, writer.sheets[sheet_name])
@@ -340,8 +380,9 @@ def main():
   original_input_df = input_df.copy()
   input_df.columns = format_columns(input_df.columns)
   
-  primary_value_currency = get_primary_value_currency(input_df.columns)
-  value_currencies = [primary_value_currency, 'BTC', 'ETH']
+  primary_valuation_currency = get_primary_valuation_currency(input_df.columns)
+
+  valuation_currencies = [primary_valuation_currency] + get_valuation_cryptocurrencies(cryptocompare_session)
   
   check_for_required_columns(input_df.columns)
   
@@ -352,35 +393,35 @@ def main():
 
   check_for_valid_buy_and_sell_quantities(buy_df, sell_df)
   
-  buy_and_sell_match_df = create_buy_and_sell_match_df(buy_df, sell_df, value_currencies, coinmarketcap_session)
+  buy_and_sell_match_df = create_buy_and_sell_match_df(buy_df, sell_df, valuation_currencies, coinmarketcap_session)
   
-  value_columns = get_value_columns(value_currencies)
+  value_columns = get_value_columns(valuation_currencies)
   pivot_values = ['quantity'] + value_columns
   margins_name = 'Total'
   
   realized_totals_df = create_realized_totals_df(buy_and_sell_match_df, pivot_values, margins_name)
-  realized_totals_per_unit_df = create_totals_per_unit_df(realized_totals_df, value_columns, margins_name)
+  realized_average_prices_df = create_average_prices_df(realized_totals_df, value_columns, margins_name)
 
-  unrealized_totals_df = create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, value_currencies, margins_name, coinmarketcap_session)
-  unrealized_totals_per_unit_df = create_totals_per_unit_df(unrealized_totals_df, value_columns, margins_name)
+  unrealized_totals_df = create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, valuation_currencies, margins_name, coinmarketcap_session)
+  unrealized_average_prices_df = create_average_prices_df(unrealized_totals_df, value_columns, margins_name)
   
   buy_and_sell_match_df = buy_and_sell_match_df.round(2)
   realized_totals_df = realized_totals_df.round(2)
-  realized_totals_per_unit_df = realized_totals_per_unit_df.round(8)
+  realized_average_prices_df = realized_average_prices_df.round(8)
   unrealized_totals_df = unrealized_totals_df.round(2)
-  unrealized_totals_per_unit_df = unrealized_totals_per_unit_df.round(8)
+  unrealized_average_prices_df = unrealized_average_prices_df.round(8)
   
   writer = pd.ExcelWriter(excel_output_filename, engine='xlsxwriter')
   write_excel_sheet(original_input_df, writer, 'input')
   write_excel_sheet(buy_and_sell_match_df, writer, 'buy_and_sell_match')
   write_excel_sheet(realized_totals_df, writer, 'realized_totals')
-  write_excel_sheet(realized_totals_per_unit_df, writer, 'realized_totals_per_unit')
+  write_excel_sheet(realized_average_prices_df, writer, 'realized_average_prices')
   write_excel_sheet(unrealized_totals_df, writer, 'unrealized_totals')
-  write_excel_sheet(unrealized_totals_per_unit_df, writer, 'unrealized_totals_per_unit')
+  write_excel_sheet(unrealized_average_prices_df, writer, 'unrealized_average_prices')
   
   output_excel_file(writer, excel_output_filename)
 
-  print('Successfully generated ' + excel_output_filename)
+  print('\n' + 'Successfully generated ' + excel_output_filename)
   
 fiat_currencies = ['AED', 'ARS', 'AUD', 'BRL', 'CAD', 'CHF', 'CLP', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'IDR', 'ILS', 'INR', 'JPY', 'KRW', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PKR', 'PLN', 'RON', 'RUB', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'UAH', 'USD', 'ZAR']
   

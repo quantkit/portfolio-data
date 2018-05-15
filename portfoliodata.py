@@ -5,11 +5,13 @@ import numpy as np
 import os
 import pandas as pd
 import pandas.io.formats.excel
+import pprint
 import requests
 from requests.adapters import HTTPAdapter
 import requests_cache
 from requests.packages.urllib3.util.retry import Retry
 from statistics import mean
+import time
 import xlsxwriter
 
 def retry_session(url, error_codes):
@@ -119,7 +121,7 @@ def format_values(input_df):
   input_df['buy_currency'] = input_df['buy_currency'].astype(str)
   input_df['buy_value_' + primary_valuation_currency] = input_df['buy_value_' + primary_valuation_currency].astype(float)
   input_df['sell'] = input_df['sell'].astype(str).replace('-', '0').astype(float)
-  input_df['sell_currency'] = input_df['sell_currency']
+  input_df['sell_currency'] = input_df['sell_currency'].astype(str)
   input_df['sell_value_' + primary_valuation_currency] = input_df['sell_value_' + primary_valuation_currency].astype(float)
   input_df['exchange'] = input_df['exchange'].astype(str)
   input_df['comment'] = input_df['comment'].astype(str)
@@ -264,7 +266,10 @@ def get_cryptocompare_average_hourly_price(from_currency, to_currency, date, cry
   return result
 
 def get_request(session, url):
-  return session.get(url, timeout=5)
+  headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.40 Safari/537.36'
+    }
+  return session.get(url, headers=headers, timeout=5)
   
 def add_gain_loss_to_df(df, valuation_currencies):
   for currency in valuation_currencies:
@@ -321,7 +326,8 @@ def create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, valuation_c
 
 def get_coinmarketcap_ids(coinmarketcap_session):
   try:
-    response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/?limit=0').json()
+    with requests_cache.disabled():
+      response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/?limit=0').json()
   except:
     print_error_message_and_exit('The program encountered an error while trying to retrieve coin IDs from the CoinMarketCap API.  Please try running the program again later.')
 
@@ -344,14 +350,13 @@ def get_coinmarketcap_current_price(from_currency, to_currency, coinmarketcap_id
         response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/' + coinmarketcap_id +  '/?convert=' + to_currency).json()
     except:
       print_error_message_and_exit('The program encountered an error while trying to retrieve current prices from the CoinMarketCap.com API.  Please try running the program again later.')
-
     current_price = float(response[0]['price_' + to_currency])
   else:
     print('\n' + 'CoinMarketCap does not have the current price for ' + from_currency + '.  The currency will have a current value of zero in the output file.')
     current_price = 0
-      
+  time.sleep(1)
   return current_price
-
+  
 def format_excel_sheet(df, sheet):
   max_width_list = [len(column) + 2 for column in df.columns]
   for i, width in enumerate(max_width_list):
@@ -405,7 +410,9 @@ def main():
   unrealized_totals_df = create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, valuation_currencies, margins_name, coinmarketcap_session)
   unrealized_average_prices_df = create_average_prices_df(unrealized_totals_df, value_columns, margins_name)
   
-  buy_and_sell_match_df = buy_and_sell_match_df.round(2)
+  buy_and_sell_match_df = buy_and_sell_match_df.round(8)
+  buy_and_sell_match_df['buy_date'] = buy_and_sell_match_df['buy_date'].dt.strftime('%Y-%m-%dT%H:%M:%S+00:00').replace('NaT', '')
+  buy_and_sell_match_df['sell_date'] = buy_and_sell_match_df['sell_date'].dt.strftime('%Y-%m-%dT%H:%M:%S+00:00').replace('NaT', '')
   realized_totals_df = realized_totals_df.round(2)
   realized_average_prices_df = realized_average_prices_df.round(8)
   unrealized_totals_df = unrealized_totals_df.round(2)

@@ -58,8 +58,8 @@ When prompted, input the valuation cryptocurrencies you want to use, separated b
       - AED, ARS, AUD, BRL, CAD, CHF, CLP, CNY, CZK, DKK, EUR, GBP, HKD, HUF, IDR, ILS, INR, JPY, KRW, MXN, MYR, NOK, NZD, PHP, PKR, PLN, RON, RUB, SEK, SGD, THB, TRY, TWD, UAH, USD, ZAR
 
 2.  Currency Conversion
-    - To convert valuations in fiat to valuations in cryptocurrencies, such as BTC and ETH, the program uses the CryptoCompare.com API.  The API makes available hourly historical prices.  The API returns prices for the two hours closest to each trade date.  The program averages these two prices when converting fiat to other valuation currencies.  The program uses an HTTP requests cache when calling this API.  So using a valuation cryptocurrency will take a long time on the first run, but will be significantly faster on subsequent runs.
-    - The program uses the CoinMarketCap.com API to retrieve the most recent prices of current holdings.
+    - To convert valuations in fiat to valuations in cryptocurrencies, such as BTC and ETH, the program uses the CryptoCompare.com API.  The API makes available hourly historical prices.  The API returns prices for the two hours closest to each trade date.  The program averages the "close" prices for these two hours when converting fiat to other valuation currencies.  The program uses an HTTP requests cache when calling this API.  So using a valuation cryptocurrency will take a long time on the first run, but will be significantly faster on subsequent runs.
+    - The program uses the CoinMarketCap.com API to retrieve the most recent prices of current holdings.  Prices are cached for 120 seconds.
 
 3.  Trade Valuations
     - For each trade, CoinTracking.info has two fiat valuations: "Buy value in (fiat currency)" and "Sell value in (fiat currency)".  For example, the buy side of a trade may be valued at $100 USD, but the sell side may be valued at $102 USD.  The program follows the below rules when calculating trade valuations:

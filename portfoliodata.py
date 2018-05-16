@@ -1,4 +1,3 @@
-import csv
 from datetime import timezone
 import numpy as np
 import os
@@ -179,10 +178,11 @@ def get_request(session, url):
 def set_trade_valuation(row, valuation_currency):
   buy = row['buy']
   sell = row['sell']
+  valuation_currency = valuation_currency.lower()
   
-  if row['buy_currency'].upper() == valuation_currency:
+  if row['buy_currency'].lower() == valuation_currency:
     result = buy
-  elif row['sell_currency'].upper() == valuation_currency:
+  elif row['sell_currency'].lower() == valuation_currency:
     result = sell
   elif not sell or sell == 0:
     result = row['buy_value_' + valuation_currency]
@@ -359,14 +359,13 @@ def get_coinmarketcap_current_price(from_currency, to_currency, coinmarketcap_id
     try:
       with requests_cache.disabled():
         response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/' + str(coinmarketcap_id) +  '/?convert=' + to_currency)
-    except Exception as e:
-      print(e)
+    except:
       print_error_message_and_exit('The program encountered an error while trying to retrieve current prices from the CoinMarketCap.com API.  Please try running the program again later.')
     current_price = float(response.json()['data']['quotes'][to_currency]['price'])
   else:
     print('\n' + 'CoinMarketCap does not have the current price for ' + from_currency + '.  The currency will have a current value of zero in the output file.')
     current_price = 0
-  time.sleep(0.2)
+  time.sleep(1)
   return current_price
   
 def format_excel_sheet(df, sheet):
@@ -393,13 +392,15 @@ def main():
   cryptocompare_session = retry_session(cryptocompare_api_base_url, error_codes, expire_after=None)
   coinmarketcap_session = retry_session(coinmarketcap_api_base_url, error_codes, expire_after=120)
   
+  valuation_cryptocurrencies = get_valuation_cryptocurrencies(cryptocompare_session)
+  
   input_df = read_input_file(cointracking_input_filename)
   original_input_df = input_df.copy()
   input_df.columns = format_columns(input_df.columns)
   
   primary_valuation_currency = get_primary_valuation_currency(input_df.columns)
 
-  valuation_currencies = [primary_valuation_currency] + get_valuation_cryptocurrencies(cryptocompare_session)
+  valuation_currencies = [primary_valuation_currency] + valuation_cryptocurrencies
   
   check_for_required_columns(input_df.columns)
   
@@ -424,8 +425,6 @@ def main():
   
   realized_totals_df = create_realized_totals_df(buy_and_sell_match_df, pivot_values, margins_name)
   realized_average_prices_df = create_average_prices_df(realized_totals_df, valuation_columns, margins_name)
-
-  valuation_columns = get_valuation_columns(['buy_value_', 'sell_value_', 'gain_loss_'], valuation_currencies)
   
   unrealized_totals_df = create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, valuation_currencies, margins_name, coinmarketcap_session)
   unrealized_average_prices_df = create_average_prices_df(unrealized_totals_df, valuation_columns, margins_name)
@@ -433,9 +432,9 @@ def main():
   buy_and_sell_match_df = buy_and_sell_match_df.round(8)
   buy_and_sell_match_df['buy_date'] = buy_and_sell_match_df['buy_date'].dt.strftime('%Y-%m-%dT%H:%M:%S+00:00').replace('NaT', '')
   buy_and_sell_match_df['sell_date'] = buy_and_sell_match_df['sell_date'].dt.strftime('%Y-%m-%dT%H:%M:%S+00:00').replace('NaT', '')
-  realized_totals_df = realized_totals_df.round(2)
+  realized_totals_df = realized_totals_df.round(8)
   realized_average_prices_df = realized_average_prices_df.round(8)
-  unrealized_totals_df = unrealized_totals_df.round(2)
+  unrealized_totals_df = unrealized_totals_df.round(8)
   unrealized_average_prices_df = unrealized_average_prices_df.round(8)
   
   writer = pd.ExcelWriter(excel_output_filename, engine='xlsxwriter')
@@ -460,7 +459,7 @@ pd.options.mode.chained_assignment = None
 cointracking_input_filename = 'CoinTracking · Trade List.csv'
 excel_output_filename = 'portfolio_data.xlsx'
 
-error_codes = set([400, 401, 403, 404, 429, 500, 502, 503, 504])
+error_codes = set([400, 401, 403, 404, 500, 502, 503, 504])
 cryptocompare_api_base_url = 'https://min-api.cryptocompare.com/data/'
 coinmarketcap_api_base_url = 'https://api.coinmarketcap.com/v2/'
 

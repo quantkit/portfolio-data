@@ -330,6 +330,8 @@ def create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, valuation_c
   
   unrealized_totals_df = add_gain_loss_to_df(unrealized_totals_df, valuation_currencies)
   
+  unrealized_totals_df = create_totals_df(unrealized_totals_df, ['currency'], pivot_values, True, margins_name)
+  
   return unrealized_totals_df
 
 def get_coinmarketcap_ids(coinmarketcap_session):

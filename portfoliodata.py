@@ -335,31 +335,32 @@ def create_unrealized_totals_df(buy_and_sell_match_df, pivot_values, valuation_c
 def get_coinmarketcap_ids(coinmarketcap_session):
   try:
     with coinmarketcap_session.cache_disabled():
-      response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/?limit=0')
+      response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'listings/')
 
   except:
     print_error_message_and_exit('The program encountered an error while trying to retrieve coin IDs from the CoinMarketCap API.  Please try running the program again later.')
 
   coinmarketcap_id_dict = {}
     
-  for coin in response.json():
-    coinmarketcap_id_dict[coin['symbol'].lower()] = coin['id'].lower()
+  for coin in response.json()['data']:
+    coinmarketcap_id_dict[coin['symbol'].upper()] = coin['id']
     
-  coinmarketcap_id_dict['cpc'] = 'cpchain'
+  coinmarketcap_id_dict['CPC'] = 2482
 
   return coinmarketcap_id_dict
 
 def get_coinmarketcap_current_price(from_currency, to_currency, coinmarketcap_id_dict, coinmarketcap_session):
-  coinmarketcap_id = coinmarketcap_id_dict.get(from_currency.lower())
+  coinmarketcap_id = coinmarketcap_id_dict.get(from_currency.upper())
 
   if coinmarketcap_id:
-    to_currency = to_currency.lower()
+    to_currency = to_currency.upper()
     try:
       with requests_cache.disabled():
-        response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/' + coinmarketcap_id +  '/?convert=' + to_currency)
-    except:
+        response = get_request(coinmarketcap_session, coinmarketcap_api_base_url + 'ticker/' + str(coinmarketcap_id) +  '/?convert=' + to_currency)
+    except Exception as e:
+      print(e)
       print_error_message_and_exit('The program encountered an error while trying to retrieve current prices from the CoinMarketCap.com API.  Please try running the program again later.')
-    current_price = float(response.json()[0]['price_' + to_currency])
+    current_price = float(response.json()['data']['quotes'][to_currency]['price'])
   else:
     print('\n' + 'CoinMarketCap does not have the current price for ' + from_currency + '.  The currency will have a current value of zero in the output file.')
     current_price = 0
@@ -457,10 +458,9 @@ pd.options.mode.chained_assignment = None
 cointracking_input_filename = 'CoinTracking · Trade List.csv'
 excel_output_filename = 'portfolio_data.xlsx'
 
-
 error_codes = set([400, 401, 403, 404, 429, 500, 502, 503, 504])
 cryptocompare_api_base_url = 'https://min-api.cryptocompare.com/data/'
-coinmarketcap_api_base_url = 'https://api.coinmarketcap.com/v1/'
+coinmarketcap_api_base_url = 'https://api.coinmarketcap.com/v2/'
 
 if __name__ == '__main__':
   main()
